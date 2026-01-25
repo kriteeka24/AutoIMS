@@ -1,31 +1,85 @@
-import { Link, NavLink } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 const Login = () => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      const response = await fetch("http://localhost:5000/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed");
+      }
+
+      localStorage.setItem("token", data.token);
+      navigate("/sidebar/dashboard");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-[90vh] w-full bg-stone-200 flex items-center justify-center p-6 caret-transparent ">
       <div className="w-full max-w-md bg-stone-300 rounded-2xl shadow-xl p-8 md:p-10">
-        <div className="flex items-center   mb-6">
-           <img src="/autoims.png" alt="AutoIMS Logo" className="w-16 h-16" />
-          <span className="text-2xl font-bold text-gray-900">
-            AutoIMS
-          </span>
+        <div className="flex items-center mb-6">
+          <img src="/autoims.png" alt="AutoIMS Logo" className="w-16 h-16" />
+          <span className="text-2xl font-bold text-gray-900">AutoIMS</span>
         </div>
 
-        <p className="mt-1 text-sm text-gray-700 font-semibold">Manage your Services.</p>
+        <p className="mt-1 text-sm text-gray-700 font-semibold">
+          Manage your Services.
+        </p>
+
+        {error && (
+          <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
 
         {/* Form */}
-        <form className="mt-6 text-gray-700 space-y-4 ">
-          <Input label="Email" type="email" placeholder="john@example.com" />
-          <Input label="Password" type="password" placeholder="••••••••" />
+        <form className="mt-6 text-gray-700 space-y-4" onSubmit={handleSubmit}>
+          <Input
+            label="Email"
+            type="email"
+            placeholder="john@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <Input
+            label="Password"
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
 
-          
           <div className="flex justify-center gap-4">
             <button
-              type="button"
-              className="w-full mt-2 rounded-full bg-indigo-700 py-3 text-sm font-semibold tracking-wide cursor-pointer text-white shadow-lg transition hover:-translate-y-0.5"
+              type="submit"
+              disabled={loading}
+              className="w-full mt-2 rounded-full bg-indigo-700 py-3 text-sm font-semibold tracking-wide cursor-pointer text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50"
             >
-              Login
-            </button> 
+              {loading ? "Logging in..." : "Login"}
+            </button>
           </div>
           <div className="text-right text-sm mt-2 text-indigo-700 font-medium cursor-pointer hover:underline">
             Forgot Password?
@@ -37,11 +91,10 @@ const Login = () => {
           </div>
         </form>
 
-        {/* Footer text-blue-600 font-semibold cursor-pointer */}
         <p className="mt-6 text-sm text-gray-700 text-center">
-          Don’t have an account?{" "}
+          Don't have an account?{" "}
           <Link
-            to="/Signup"
+            to="/signup"
             className="text-indigo-700 font-semibold cursor-pointer hover:underline"
           >
             Create New!
@@ -52,7 +105,7 @@ const Login = () => {
   );
 };
 
-const Input = ({ label, type = "text", placeholder }) => {
+const Input = ({ label, type = "text", placeholder, value, onChange }) => {
   return (
     <div className="select-text">
       <label className="block mb-1.5 text-xs font-semibold text-gray-500">
@@ -61,14 +114,10 @@ const Input = ({ label, type = "text", placeholder }) => {
       <input
         type={type}
         placeholder={placeholder}
+        value={value}
+        onChange={onChange}
         autoComplete="off"
-        className="
-          w-full h-11 rounded-lg
-          border border-blue-300
-          px-4 text-sm text-gray-800
-          outline-none transition
-          focus:border-blue-500 focus:ring-2 focus:ring-blue-100
-        "
+        className="w-full h-11 rounded-lg border border-blue-300 px-4 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 caret-black"
       />
     </div>
   );

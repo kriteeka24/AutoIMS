@@ -1,5 +1,6 @@
 CREATE SCHEMA IF NOT EXISTS vehicle_service;
 
+-- 1. CUSTOMER
 CREATE TABLE IF NOT EXISTS customers(
     customer_id INT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -9,6 +10,7 @@ CREATE TABLE IF NOT EXISTS customers(
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 2. VEHICLE
 CREATE TABLE IF NOT EXISTS vehicles(
     vehicle_id INT PRIMARY KEY,
     plate_no VARCHAR(20) UNIQUE NOT NULL,
@@ -19,6 +21,7 @@ CREATE TABLE IF NOT EXISTS vehicles(
     customer_id INT REFERENCES customers(customer_id)
 );
 
+-- 3. SERVICE REQUEST
 CREATE TABLE IF NOT EXISTS service_requests(
     request_id INT PRIMARY KEY,
     request_date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -29,6 +32,7 @@ CREATE TABLE IF NOT EXISTS service_requests(
     vehicle_id INT REFERENCES vehicles(vehicle_id)
 );
 
+-- 4. SERVICE JOB
 CREATE TABLE IF NOT EXISTS service_jobs(
     job_id INT PRIMARY KEY,
     start_time TIMESTAMP,
@@ -38,26 +42,29 @@ CREATE TABLE IF NOT EXISTS service_jobs(
     request_id INT REFERENCES service_requests(request_id)
 );
 
-CREATE TABLE IF NOT EXISTS job_parts_used(
-    job_part_id INT PRIMARY KEY,
-    quantity_used INT NOT NULL,
-    unit_price_at_time NUMERIC(10,2) NOT NULL,
-    job_id INT REFERENCES service_jobs(job_id),
-    part_id INT REFERENCES parts(part_id)
-);
-
+-- 5. INVENTORY
 CREATE TABLE IF NOT EXISTS inventory(
     part_id INT PRIMARY KEY,
     part_name VARCHAR(100) NOT NULL,
     part_code VARCHAR(50) UNIQUE NOT NULL,
     brand VARCHAR(50) NOT NULL,
     unit_price NUMERIC(10,2) NOT NULL,
-    qunatity_in_stock INT NOT NULL DEFAULT 0,
+    quantity_in_stock INT NOT NULL DEFAULT 0,
     reorder_level INT NOT NULL,
     description TEXT,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 6. JOB PARTS USED
+CREATE TABLE IF NOT EXISTS job_parts_used(
+    job_part_id INT PRIMARY KEY,
+    quantity_used INT NOT NULL,
+    unit_price_at_time NUMERIC(10,2) NOT NULL,
+    job_id INT REFERENCES service_jobs(job_id),
+    part_id INT REFERENCES inventory(part_id)
+);
+
+-- 7. BILLING
 CREATE TABLE IF NOT EXISTS billing(
     bill_id INT PRIMARY KEY,
     bill_date DATE NOT NULL DEFAULT CURRENT_DATE,

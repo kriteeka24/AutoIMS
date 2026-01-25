@@ -1,0 +1,123 @@
+# ===========================================
+# AutoIMS - Git Ignore File
+# ===========================================
+
+# -----------------
+# Credentials & Secrets
+# -----------------
+backend/db_password.txt
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# -----------------
+# Python / Backend
+# -----------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+ENV/
+env/
+.venv/
+
+# Pytest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# -----------------
+# Node.js / Frontend
+# -----------------
+node_modules/
+dist/
+dist-ssr/
+*.local
+.npm
+.yarn
+.pnpm-store/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# -----------------
+# IDE & Editors
+# -----------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*.sw?
+*.sublime-workspace
+*.sublime-project
+
+# JetBrains
+*.iml
+.idea/
+
+# Visual Studio
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.user
+
+# -----------------
+# OS Generated
+# -----------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# -----------------
+# Testing
+# -----------------
+coverage/
+.nyc_output/
+
+# -----------------
+# Misc
+# -----------------
+*.bak
+*.tmp
+*.temp
+*.cache
+.cache/
