@@ -4,23 +4,37 @@ import { Link, useNavigate } from "react-router-dom";
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
 
-    // Simulate successful login and navigation
-    setTimeout(() => {
-      // You can simulate setting a token or storing session data
-      localStorage.setItem("token", "dummy-token"); // Simulating a successful login
+    try {
+      const response = await fetch("http://localhost:5000/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-      // Navigate to the dashboard page
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed");
+      }
+
+      localStorage.setItem("token", data.token);
       navigate("/sidebar/dashboard");
-    }, 1000); // Simulating delay for "login" process
-
-    setLoading(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -34,6 +48,12 @@ const Login = () => {
         <p className="mt-1 text-sm text-gray-700 font-semibold">
           Manage your Services.
         </p>
+
+        {error && (
+          <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
 
         {/* Form */}
         <form className="mt-6 text-gray-700 space-y-4" onSubmit={handleSubmit}>

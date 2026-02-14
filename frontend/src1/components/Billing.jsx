@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePopupTrigger } from "./PopupTriggerContext";
 
 // Sample data (replace with your actual data from the backend/API)
 const customers = [
@@ -38,6 +39,7 @@ const Billing = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerCharges, setCustomerCharges] = useState(null); // Store charges for the selected customer
+  const { triggers } = usePopupTrigger();
 
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -145,6 +147,11 @@ const Billing = () => {
     // Close the document to render the content
     printWindow.document.close();
   };
+
+  React.useEffect(() => {
+    if (triggers.billing) setShowAddPopup(true);
+    // ...existing code...
+  }, [triggers.billing]);
 
   return (
     <div>

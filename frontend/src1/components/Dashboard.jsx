@@ -1,6 +1,8 @@
+import { usePopupTrigger } from "./PopupTriggerContext";
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
+  const { triggerPopup } = usePopupTrigger();
   const navigate = useNavigate();
   return (
     <div className="space-y-6">
@@ -228,17 +230,17 @@ export default function Dashboard() {
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h3>
             <div className="grid grid-cols-2 gap-3">
               <button className="p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors text-center"
-                onClick={() => navigate('/sidebar/service_requests')}>
+                onClick={() => { triggerPopup('serviceRequest'); navigate('/sidebar/service_requests'); }}>
                 <span className="block text-blue-600 text-lg mb-1">+</span>
                 <span className="text-sm font-medium text-blue-700">Add Service Requests</span>
               </button>
               <button className="p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors text-center"
-                onClick={() => navigate('/sidebar/employees')}>
+                onClick={() => { triggerPopup('employee'); navigate('/sidebar/employees'); }}>
                 <span className="block text-green-600 text-lg mb-1">+</span>
                 <span className="text-sm font-medium text-green-700">Add Employee</span>
               </button>
               <button className="p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors text-center"
-                onClick={() => navigate('/sidebar/inventory')}>
+                onClick={() => { triggerPopup('inventory'); navigate('/sidebar/inventory'); }}>
                 <span className="block text-purple-600 text-lg mb-1">📦</span>
                 <span className="text-sm font-medium text-purple-700">Add Item</span>
               </button>

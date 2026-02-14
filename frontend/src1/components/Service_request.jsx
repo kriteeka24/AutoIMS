@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePopupTrigger } from "./PopupTriggerContext";
 
 const Service_request = () => {
   const initialRequests = [
@@ -48,6 +49,7 @@ const Service_request = () => {
   const [editRequestData, setEditRequestData] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
 
+  const { triggers } = usePopupTrigger();
 
   const [newRequest, setNewRequest] = useState({
     customerId: '',
@@ -132,6 +134,10 @@ const Service_request = () => {
       req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.customerId.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  React.useEffect(() => {
+    if (triggers.serviceRequest) setShowAddPopup(true);
+  }, [triggers.serviceRequest]);
 
   return (
     <div className="w-full max-w-full mx-auto p-6">
