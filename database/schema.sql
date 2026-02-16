@@ -75,3 +75,17 @@ CREATE TABLE IF NOT EXISTS billing(
     payment_status VARCHAR(20) NOT NULL DEFAULT 'Unpaid',
     job_id INT REFERENCES service_jobs(job_id)
 );
+
+-- 8. EMPLOYEES
+CREATE TABLE IF NOT EXISTS employees (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    position VARCHAR(100) NOT NULL,
+    salary DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--Modify service_jobs table
+ALTER TABLE service_jobs
+ADD COLUMN employee_id INT,
+ADD FOREIGN KEY (employee_id) REFERENCES employees(id);
