@@ -117,8 +117,31 @@ def get_jobs_by_status(status):
         cur.execute(f"""
             SELECT sj.*, e.name AS employee_name
             FROM {SCHEMA}.service_jobs sj
-            LEFT JOIN {SCHEMA}.employees e ON sj.assigned_employee = e.employee_id
+            LEFT JOIN {SCHEMA}.employees e ON sj.employee_id = e.id
             WHERE sj.job_status = %s
             ORDER BY sj.start_time DESC
         """, (status,))
+        return [dict(row) for row in cur.fetchall()]
+
+
+def get_completed_jobs_without_bills():
+    """Get all completed jobs that don't have a billing record yet."""
+    with get_db_cursor() as cur:
+        cur.execute(f"""
+            SELECT sj.*, 
+                   e.name AS employee_name,
+                   sr.service_type, sr.problem_note, sr.priority,
+                   v.plate_no, v.brand, v.model, v.year,
+                   c.name AS customer_name, c.phone AS customer_phone
+            FROM {SCHEMA}.service_jobs sj
+            LEFT JOIN {SCHEMA}.employees e ON sj.employee_id = e.id
+            LEFT JOIN {SCHEMA}.service_requests sr ON sj.request_id = sr.request_id
+            LEFT JOIN {SCHEMA}.vehicles v ON sr.vehicle_id = v.vehicle_id
+            LEFT JOIN {SCHEMA}.customers c ON v.customer_id = c.customer_id
+            WHERE sj.job_status = 'Completed'
+            AND NOT EXISTS (
+                SELECT 1 FROM {SCHEMA}.billing b WHERE b.job_id = sj.job_id
+            )
+            ORDER BY sj.end_time DESC NULLS LAST
+        """)
         return [dict(row) for row in cur.fetchall()]

@@ -15,8 +15,11 @@ def get_all_jobs(current_user):
     """Get all service jobs with employee and vehicle info."""
     try:
         status_filter = request.args.get('status')
+        pending_billing = request.args.get('pending_billing')
         
-        if status_filter:
+        if pending_billing == 'true':
+            jobs = job_ctrl.get_completed_jobs_without_bills()
+        elif status_filter:
             jobs = job_ctrl.get_jobs_by_status(status_filter)
         else:
             jobs = job_ctrl.get_all_jobs()

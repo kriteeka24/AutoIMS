@@ -3,18 +3,18 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import request, jsonify, current_app
 
-def generate_token(user_id):
+def generate_token(employee_id):
     """
-    Generate a JWT token for the user.
+    Generate a JWT token for the employee.
     
     Args:
-        user_id: The user's ID to include in the token
+        employee_id: The employee's ID to include in the token
         
     Returns:
         str: The encoded JWT token
     """
     payload = {
-        'user_id': user_id,
+        'employee_id': employee_id,
         'exp': datetime.utcnow() + current_app.config['JWT_ACCESS_TOKEN_EXPIRES'],
         'iat': datetime.utcnow()
     }
@@ -79,14 +79,21 @@ def token_required(f):
         try:
             # Decode the token
             payload = decode_token(token)
-            user_id = payload['user_id']
+            # Support both old user_id tokens and new employee_id tokens
+            employee_id = payload.get('employee_id') or payload.get('user_id')
             
-            # Get the user from database
-            from models.user import get_user_by_id
-            current_user = get_user_by_id(user_id)
+            # Get the employee from database
+            from db.connection import get_db_cursor
+            with get_db_cursor() as cur:
+                cur.execute("""
+                    SELECT id, name, username, email, position, working_status, created_at
+                    FROM vehicle_service.employees
+                    WHERE id = %s
+                """, (employee_id,))
+                current_user = cur.fetchone()
             
             if not current_user:
-                return jsonify({'error': 'User not found'}), 401
+                return jsonify({'error': 'Employee not found'}), 401
                 
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired'}), 401
@@ -95,7 +102,7 @@ def token_required(f):
         except Exception as e:
             return jsonify({'error': 'Token validation failed'}), 401
         
-        # Pass the current user to the route function
+        # Pass the current employee to the route function
         return f(current_user, *args, **kwargs)
     
     return decorated

@@ -158,12 +158,18 @@ def create_request(current_user):
         if not service_type or not service_type.strip():
             return jsonify({'error': 'service_type is required'}), 400
         
+        # Get assigned employee ID (optional but recommended)
+        assigned_employee_id = data.get('assigned_employee_id')
+        if assigned_employee_id:
+            assigned_employee_id = int(assigned_employee_id)
+        
         service_request = sr_ctrl.create_request(
             vehicle_id=vehicle_id,
             service_type=service_type.strip(),
             problem_note=data.get('problem_note'),
             priority=data.get('priority', 'Normal'),
-            status=data.get('status', 'Pending')
+            status=data.get('status', 'Pending'),
+            assigned_employee_id=assigned_employee_id
         )
         
         if not service_request:
@@ -189,14 +195,16 @@ def create_request(current_user):
 def update_request(current_user, request_id):
     """
     Update a service request.
+    If status is changed to 'Completed', triggers auto-billing.
     
     Expected JSON (all fields optional):
     {
         "service_type": "Brake Repair",
         "problem_note": "Brakes squeaking",
         "priority": "Normal",
-        "status": "In Progress",
-        "vehicle_id": 2
+        "status": "Completed",
+        "vehicle_id": 2,
+        "labor_charge": 500.00  // used when status is Completed
     }
     """
     try:
@@ -213,22 +221,67 @@ def update_request(current_user, request_id):
         if vehicle_id and not veh_ctrl.vehicle_exists(vehicle_id):
             return jsonify({'error': 'Vehicle not found'}), 404
         
+        # Get the old status to detect if status is changing to Completed
+        old_request = sr_ctrl.get_request_by_id(request_id)
+        old_status = old_request.get('status') if old_request else None
+        new_status = data.get('status')
+        
         service_request = sr_ctrl.update_request(
             request_id=request_id,
             service_type=data.get('service_type'),
             problem_note=data.get('problem_note'),
             priority=data.get('priority'),
-            status=data.get('status'),
+            status=new_status,
             vehicle_id=vehicle_id
         )
+        
+        # TRIGGER 3: If status changed to Completed, trigger auto-billing
+        bill = None
+        job = None
+        if new_status == 'Completed' and old_status != 'Completed':
+            from controllers import service_jobs as job_ctrl
+            from controllers import billing as billing_ctrl
+            from datetime import datetime
+            
+            labor_charge = data.get('labor_charge', 0.00)
+            try:
+                labor_charge = float(labor_charge)
+            except (ValueError, TypeError):
+                labor_charge = 0.00
+            
+            # Find the job for this request
+            job = sr_ctrl.get_job_for_request(request_id)
+            
+            if job:
+                job_id = job['job_id']
+                
+                # Update labor_charge on the job
+                job_ctrl.update_labor_charge(job_id, labor_charge)
+                
+                # Update job status to Completed with end_time
+                job_ctrl.update_job_status(job_id, 'Completed', datetime.now())
+                
+                # Generate the bill automatically
+                bill_result, bill_error = billing_ctrl.generate_bill(job_id)
+                if bill_result:
+                    bill = billing_ctrl.get_bill_by_id(bill_result['bill_id'])
         
         # Return full request details
         full_request = sr_ctrl.get_request_by_id(request_id)
         
-        return jsonify({
+        response = {
             'message': 'Service request updated successfully',
             'request': full_request
-        }), 200
+        }
+        
+        if job:
+            response['job'] = job
+        
+        if bill:
+            response['bill'] = bill
+            response['message'] = 'Service request completed and bill generated successfully'
+        
+        return jsonify(response), 200
         
     except Exception as e:
         return jsonify({'error': f'Failed to update service request: {str(e)}'}), 500
@@ -238,11 +291,13 @@ def update_request(current_user, request_id):
 @token_required
 def update_request_status(current_user, request_id):
     """
-    Update service request status.
+    TRIGGER 3: Update service request status.
+    When status is 'Completed', automatically completes the job and generates a bill.
     
     Expected JSON:
     {
-        "status": "Completed"
+        "status": "Completed",
+        "labor_charge": 500.00  // optional, defaults to 0.00
     }
     """
     try:
@@ -255,6 +310,8 @@ def update_request_status(current_user, request_id):
             return jsonify({'error': 'No data provided'}), 400
         
         status = data.get('status')
+        labor_charge = data.get('labor_charge', 0.00)  # Default to 0.00
+        
         if not status:
             return jsonify({'error': 'Status is required'}), 400
         
@@ -262,12 +319,57 @@ def update_request_status(current_user, request_id):
         if status not in valid_statuses:
             return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
         
+        # Validate labor_charge
+        try:
+            labor_charge = float(labor_charge)
+        except (ValueError, TypeError):
+            labor_charge = 0.00
+        
+        # Update the service request status
         service_request = sr_ctrl.update_request_status(request_id, status)
         
-        return jsonify({
+        # TRIGGER 3: If status is Completed, complete job and generate bill
+        bill = None
+        job = None
+        if status == 'Completed':
+            from controllers import service_jobs as job_ctrl
+            from controllers import billing as billing_ctrl
+            from datetime import datetime
+            
+            # Find the job for this request
+            job = sr_ctrl.get_job_for_request(request_id)
+            
+            if job:
+                job_id = job['job_id']
+                
+                # TRIGGER 3 STEP 1: Update labor_charge on the job
+                job_ctrl.update_labor_charge(job_id, labor_charge)
+                
+                # TRIGGER 3 STEP 2: Update job status to Completed with end_time
+                updated_job = job_ctrl.update_job_status(job_id, 'Completed', datetime.now())
+                
+                # TRIGGER 3 STEP 3: Generate the bill automatically
+                # This calculates: subtotal_parts = SUM(quantity_used * unit_price_at_time)
+                # tax = 18% of (labor + parts)
+                bill_result, bill_error = billing_ctrl.generate_bill(job_id)
+                if bill_result:
+                    bill = bill_result
+                    # Fetch full bill details for response
+                    bill = billing_ctrl.get_bill_by_id(bill['bill_id'])
+        
+        response = {
             'message': 'Status updated successfully',
             'request': service_request
-        }), 200
+        }
+        
+        if job:
+            response['job'] = job
+        
+        if bill:
+            response['bill'] = bill
+            response['message'] = 'Status updated and bill generated successfully'
+        
+        return jsonify(response), 200
         
     except Exception as e:
         return jsonify({'error': f'Failed to update status: {str(e)}'}), 500

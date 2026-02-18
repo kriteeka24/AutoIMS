@@ -8,15 +8,19 @@ SCHEMA = 'vehicle_service'
 
 
 def get_all_requests():
-    """Get all service requests with vehicle and customer info."""
+    """Get all service requests with vehicle, customer, and assigned employee info."""
     with get_db_cursor() as cur:
         cur.execute(f"""
             SELECT sr.*, 
                    v.plate_no, v.brand AS vehicle_brand, v.model AS vehicle_model, v.year AS vehicle_year, v.color AS vehicle_color,
-                   c.customer_id, c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email, c.address AS customer_address
+                   c.customer_id, c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email, c.address AS customer_address,
+                   sj.job_id, sj.employee_id AS assigned_employee_id,
+                   e.name AS assigned_employee_name, e.position AS assigned_employee_position
             FROM {SCHEMA}.service_requests sr
             LEFT JOIN {SCHEMA}.vehicles v ON sr.vehicle_id = v.vehicle_id
             LEFT JOIN {SCHEMA}.customers c ON v.customer_id = c.customer_id
+            LEFT JOIN {SCHEMA}.service_jobs sj ON sr.request_id = sj.request_id
+            LEFT JOIN {SCHEMA}.employees e ON sj.employee_id = e.id
             ORDER BY sr.request_date DESC, sr.request_id DESC
         """)
         return [dict(row) for row in cur.fetchall()]
@@ -78,16 +82,50 @@ def get_requests_by_customer(customer_id):
         return [dict(row) for row in cur.fetchall()]
 
 
-def create_request(vehicle_id, service_type, problem_note=None, priority='Normal', status='Pending'):
-    """Create a new service request. Let SERIAL handle the ID."""
-    query = f"""
-        INSERT INTO {SCHEMA}.service_requests 
-            (vehicle_id, service_type, problem_note, priority, status, request_date)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        RETURNING *
+def create_request(vehicle_id, service_type, problem_note=None, priority='Normal', status='Pending', assigned_employee_id=None):
     """
-    result = execute_returning(query, (vehicle_id, service_type, problem_note, priority, status, date.today()))
-    return dict(result) if result else None
+    Create a new service request and automatically create a service job.
+    TRIGGER 1: INSERT request RETURNING request_id -> INSERT job with request_id
+    """
+    from psycopg.rows import dict_row
+    from db.connection import get_db_connection
+    
+    with get_db_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            # TRIGGER 1: Create the service request with RETURNING
+            cur.execute(f"""
+                INSERT INTO {SCHEMA}.service_requests 
+                    (vehicle_id, service_type, problem_note, priority, status, request_date)
+                VALUES (%s, %s, %s, %s, %s, CURRENT_DATE)
+                RETURNING request_id, vehicle_id, service_type, problem_note, priority, status, request_date
+            """, (vehicle_id, service_type, problem_note, priority, status))
+            
+            request_row = cur.fetchone()
+            if not request_row:
+                return None
+            
+            # Extract request_id from the RETURNING clause
+            request_id = request_row['request_id']
+            
+            # TRIGGER 1 CONTINUED: Immediately create a service_job row with assigned employee
+            cur.execute(f"""
+                INSERT INTO {SCHEMA}.service_jobs 
+                    (request_id, employee_id, start_time, job_status, labor_charge)
+                VALUES (%s, %s, CURRENT_TIMESTAMP, 'In Progress', 0.00)
+                RETURNING job_id, request_id, employee_id, start_time, job_status, labor_charge
+            """, (request_id, assigned_employee_id))
+            
+            job_row = cur.fetchone()
+            conn.commit()
+            
+            # Build response with both request and job info
+            request_dict = dict(request_row)
+            if job_row:
+                request_dict['job_id'] = job_row['job_id']
+                request_dict['job_status'] = job_row['job_status']
+                request_dict['employee_id'] = job_row['employee_id']
+            
+            return request_dict
 
 
 def update_request(request_id, service_type=None, problem_note=None, priority=None, status=None, vehicle_id=None):
@@ -159,6 +197,19 @@ def request_exists(request_id):
         return cur.fetchone() is not None
 
 
+def get_job_for_request(request_id):
+    """Get the service job associated with a request."""
+    with get_db_cursor() as cur:
+        cur.execute(f"""
+            SELECT * FROM {SCHEMA}.service_jobs 
+            WHERE request_id = %s 
+            ORDER BY job_id DESC 
+            LIMIT 1
+        """, (request_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
 def search_requests(search_term):
     """Search service requests by customer name, plate number, or service type."""
     with get_db_cursor() as cur:
@@ -185,9 +236,9 @@ def get_request_with_employees(request_id):
         
         # Get employees assigned to this request's jobs
         cur.execute(f"""
-            SELECT DISTINCT e.employee_id, e.name AS employee_name, e.role
+            SELECT DISTINCT e.id AS employee_id, e.name AS employee_name, e.position
             FROM {SCHEMA}.service_jobs sj
-            JOIN {SCHEMA}.employees e ON sj.assigned_employee = e.employee_id
+            JOIN {SCHEMA}.employees e ON sj.employee_id = e.id
             WHERE sj.request_id = %s
         """, (request_id,))
         employees = [dict(row) for row in cur.fetchall()]
@@ -203,9 +254,9 @@ def get_all_requests_with_employees():
     with get_db_cursor() as cur:
         for req in requests:
             cur.execute(f"""
-                SELECT DISTINCT e.employee_id, e.name AS employee_name, e.role
+                SELECT DISTINCT e.id AS employee_id, e.name AS employee_name, e.position
                 FROM {SCHEMA}.service_jobs sj
-                JOIN {SCHEMA}.employees e ON sj.assigned_employee = e.employee_id
+                JOIN {SCHEMA}.employees e ON sj.employee_id = e.id
                 WHERE sj.request_id = %s
             """, (req['request_id'],))
             req['employees'] = [dict(row) for row in cur.fetchall()]

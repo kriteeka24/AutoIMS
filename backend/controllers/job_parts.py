@@ -19,13 +19,88 @@ def get_parts_for_job(job_id):
         return [dict(row) for row in cur.fetchall()]
 
 
+def get_active_job_for_vehicle(vehicle_id):
+    """Get the active (In Progress) job for a vehicle."""
+    with get_db_cursor() as cur:
+        cur.execute(f"""
+            SELECT sj.job_id, sj.job_status, sj.labor_charge,
+                   sr.request_id, sr.service_type,
+                   c.name AS customer_name
+            FROM {SCHEMA}.service_jobs sj
+            JOIN {SCHEMA}.service_requests sr ON sj.request_id = sr.request_id
+            JOIN {SCHEMA}.vehicles v ON sr.vehicle_id = v.vehicle_id
+            JOIN {SCHEMA}.customers c ON v.customer_id = c.customer_id
+            WHERE v.vehicle_id = %s AND sj.job_status = 'In Progress'
+            ORDER BY sj.start_time DESC
+            LIMIT 1
+        """, (vehicle_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_active_job_by_plate_no(plate_no, customer_id=None):
+    """
+    Get the active (In Progress) job for a vehicle by its plate number.
+    Optionally verify that the vehicle belongs to the specified customer.
+    """
+    with get_db_cursor() as cur:
+        # Build query with optional customer verification
+        if customer_id:
+            cur.execute(f"""
+                SELECT sj.job_id, sj.job_status, sj.labor_charge,
+                       sr.request_id, sr.service_type,
+                       c.customer_id, c.name AS customer_name,
+                       v.vehicle_id, v.plate_no
+                FROM {SCHEMA}.service_jobs sj
+                JOIN {SCHEMA}.service_requests sr ON sj.request_id = sr.request_id
+                JOIN {SCHEMA}.vehicles v ON sr.vehicle_id = v.vehicle_id
+                JOIN {SCHEMA}.customers c ON v.customer_id = c.customer_id
+                WHERE LOWER(v.plate_no) = LOWER(%s) 
+                  AND c.customer_id = %s
+                  AND sj.job_status = 'In Progress'
+                ORDER BY sj.start_time DESC
+                LIMIT 1
+            """, (plate_no, customer_id))
+        else:
+            cur.execute(f"""
+                SELECT sj.job_id, sj.job_status, sj.labor_charge,
+                       sr.request_id, sr.service_type,
+                       c.customer_id, c.name AS customer_name,
+                       v.vehicle_id, v.plate_no
+                FROM {SCHEMA}.service_jobs sj
+                JOIN {SCHEMA}.service_requests sr ON sj.request_id = sr.request_id
+                JOIN {SCHEMA}.vehicles v ON sr.vehicle_id = v.vehicle_id
+                JOIN {SCHEMA}.customers c ON v.customer_id = c.customer_id
+                WHERE LOWER(v.plate_no) = LOWER(%s) AND sj.job_status = 'In Progress'
+                ORDER BY sj.start_time DESC
+                LIMIT 1
+            """, (plate_no,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def verify_vehicle_ownership(plate_no, customer_id):
+    """Verify that a vehicle with the given plate_no belongs to the customer."""
+    with get_db_cursor() as cur:
+        cur.execute(f"""
+            SELECT v.vehicle_id, v.plate_no, c.customer_id, c.name AS customer_name
+            FROM {SCHEMA}.vehicles v
+            JOIN {SCHEMA}.customers c ON v.customer_id = c.customer_id
+            WHERE LOWER(v.plate_no) = LOWER(%s) AND c.customer_id = %s
+        """, (plate_no, customer_id))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
 def add_part_to_job(job_id, part_id, quantity_used):
     """
     Add a part to a job and update inventory.
     Uses a transaction to ensure both operations succeed or fail together.
     """
+    from psycopg.rows import dict_row
+    
     with get_db_connection() as conn:
-        with conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             # Get current unit price from inventory
             cur.execute(f"""
                 SELECT unit_price, quantity_in_stock 
@@ -36,8 +111,8 @@ def add_part_to_job(job_id, part_id, quantity_used):
             if not part:
                 return None, "Part not found"
             
-            unit_price = part[0]
-            current_stock = part[1]
+            unit_price = part['unit_price']
+            current_stock = part['quantity_in_stock']
             
             # Check if enough stock
             if current_stock < quantity_used:
@@ -68,11 +143,9 @@ def add_part_to_job(job_id, part_id, quantity_used):
                 WHERE jpu.job_part_id = %s
             """, (job_part_id,))
             
-            # Build dict manually since we committed the transaction
             row = cur.fetchone()
             if row:
-                columns = [desc[0] for desc in cur.description]
-                return dict(zip(columns, row)), None
+                return dict(row), None
             
             return None, "Failed to retrieve created record"
 

@@ -21,21 +21,6 @@ export default function Navbar() {
                 <span>AutoIMS</span>
               </div>
             </Link>
-
-            {/* <NavLink
-              to="/dashboard"
-              className={({ isActive }) =>
-                `inline-flex items-center ${
-                  isActive
-                    ? "text-blue-600 font"
-                    : "text-gray-600 hover:text-gray-900 transition"
-                }`
-              }
-            >
-                </NavLink> */}
-            <span className="text-gray-900 text-xl font-bold hover:text-indigo-700">
-              Overview
-            </span>
           </div>
 
           {/* Right group: Auth */}

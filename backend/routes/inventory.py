@@ -1,11 +1,41 @@
 """
 Inventory API routes.
 """
-from flask import Blueprint, request, jsonify
+import os
+import uuid
+from flask import Blueprint, request, jsonify, current_app
+from werkzeug.utils import secure_filename
 from controllers import inventory as inv_ctrl
 from utils.jwt_utils import token_required
 
 inventory_bp = Blueprint('inventory', __name__, url_prefix='/api/inventory')
+
+# Allowed image extensions
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+UPLOAD_FOLDER = 'static/uploads/inventory'
+
+
+def allowed_file(filename):
+    """Check if file extension is allowed."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def save_image(file):
+    """Save uploaded image and return the relative path."""
+    if not file or not allowed_file(file.filename):
+        return None
+    
+    # Ensure upload directory exists
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    
+    # Generate unique filename
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(filepath)
+    
+    # Return relative URL path
+    return f"/{UPLOAD_FOLDER}/{filename}"
 
 
 @inventory_bp.route('', methods=['GET'])
@@ -66,7 +96,9 @@ def add_item(current_user):
     """
     Add a new inventory item.
     
-    Expected JSON:
+    Supports both JSON and multipart/form-data (for image uploads).
+    
+    Expected fields:
     {
         "part_name": "Brake Pad",
         "part_code": "BP-001",
@@ -74,11 +106,19 @@ def add_item(current_user):
         "reorder_level": 10,
         "brand": "Bosch",  (optional)
         "quantity_in_stock": 50,  (optional, default 0)
-        "description": "Front brake pad"  (optional)
+        "quantity_label": "pcs",  (optional, default 'pcs')
+        "description": "Front brake pad",  (optional)
+        "image": <file>  (optional, for multipart/form-data)
     }
     """
     try:
-        data = request.get_json()
+        # Check if it's multipart/form-data (file upload) or JSON
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            data = request.form.to_dict()
+            image_file = request.files.get('image')
+        else:
+            data = request.get_json()
+            image_file = None
         
         if not data:
             return jsonify({'error': 'No data provided'}), 400
@@ -87,19 +127,16 @@ def add_item(current_user):
         part_name = data.get('part_name')
         part_code = data.get('part_code')
         unit_price = data.get('unit_price')
-        reorder_level = data.get('reorder_level')
+        reorder_level = data.get('reorder_level', 10)  # Default to 10 if not provided
         
-        if not part_name or not part_name.strip():
+        if not part_name or not str(part_name).strip():
             return jsonify({'error': 'part_name is required'}), 400
         
-        if not part_code or not part_code.strip():
+        if not part_code or not str(part_code).strip():
             return jsonify({'error': 'part_code is required'}), 400
         
         if unit_price is None:
             return jsonify({'error': 'unit_price is required'}), 400
-        
-        if reorder_level is None:
-            return jsonify({'error': 'reorder_level is required'}), 400
         
         try:
             unit_price = float(unit_price)
@@ -107,14 +144,21 @@ def add_item(current_user):
         except ValueError:
             return jsonify({'error': 'Invalid numeric values'}), 400
         
+        # Handle image upload
+        image_url = None
+        if image_file:
+            image_url = save_image(image_file)
+        
         item = inv_ctrl.add_item(
-            part_name=part_name.strip(),
-            part_code=part_code.strip(),
+            part_name=str(part_name).strip(),
+            part_code=str(part_code).strip(),
             unit_price=unit_price,
             reorder_level=reorder_level,
             brand=data.get('brand'),
             quantity_in_stock=data.get('quantity_in_stock', 0),
-            description=data.get('description')
+            quantity_label=data.get('quantity_label', 'pcs'),
+            description=data.get('description'),
+            image_url=image_url
         )
         
         if not item:
@@ -165,6 +209,7 @@ def update_item(current_user, part_id):
             brand=data.get('brand'),
             unit_price=data.get('unit_price'),
             quantity_in_stock=data.get('quantity_in_stock'),
+            quantity_label=data.get('quantity_label'),
             reorder_level=data.get('reorder_level'),
             description=data.get('description')
         )
@@ -233,3 +278,15 @@ def update_stock(current_user, part_id):
         
     except Exception as e:
         return jsonify({'error': f'Failed to update stock: {str(e)}'}), 500
+
+
+@inventory_bp.route('/<int:part_id>', methods=['DELETE'])
+@token_required
+def delete_item(current_user, part_id):
+    try:
+        success = inv_ctrl.delete_item(part_id)
+        if not success:
+            return jsonify({'error': 'Item not found'}), 404
+        return jsonify({'message': 'Item deleted successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

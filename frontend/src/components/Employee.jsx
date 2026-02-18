@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const API_BASE = "http://localhost:5000/api";
 
@@ -20,10 +21,21 @@ const mapEmployeeFromBackend = (emp) => ({
 });
 
 const Employee = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [employeeList, setEmployeeList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Handle auth errors - redirect to login on 401
+  const handleAuthError = (response) => {
+    if (response.status === 401) {
+      localStorage.removeItem("token");
+      navigate("/login");
+      return true;
+    }
+    return false;
+  };
 
   // A canonical list of vehicle IDs for suggestions / validation.
   // In a real app this should come from the backend.
@@ -136,10 +148,12 @@ const Employee = () => {
       return;
 
     try {
+      const token = getAuthToken();
       const response = await fetch(`${API_BASE}/employees`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
         body: JSON.stringify({
           name: newEmployee.employeeName,
@@ -152,6 +166,8 @@ const Employee = () => {
           jobsDone: parseInt(newEmployee.jobsDone) || 0,
         }),
       });
+
+      if (handleAuthError(response)) return;
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -244,12 +260,16 @@ const Employee = () => {
       )
     ) {
       try {
+        const token = getAuthToken();
         const response = await fetch(`${API_BASE}/employees/${employeeId}`, {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
           },
         });
+
+        if (handleAuthError(response)) return;
 
         if (!response.ok) {
           const errorData = await response.json();
@@ -282,12 +302,14 @@ const Employee = () => {
   const handleEditPopupSubmit = async (e) => {
     e.preventDefault();
     try {
+      const token = getAuthToken();
       const response = await fetch(
         `${API_BASE}/employees/${editEmployeeData.employeeId}`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
           },
           body: JSON.stringify({
             name: editEmployeeData.employeeName,
@@ -300,6 +322,8 @@ const Employee = () => {
           }),
         },
       );
+
+      if (handleAuthError(response)) return;
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -348,16 +372,10 @@ const Employee = () => {
           Employee{" "}
         </h1>
 
-        {/* Error message if any */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 flex items-center justify-between">
-            <span>{error}</span>
-            <button
-              onClick={fetchEmployees}
-              className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-            >
-              Retry
-            </button>
+        {/* Loading state */}
+        {loading && (
+          <div className="flex justify-center items-center h-32">
+            <p className="text-lg text-gray-500">Loading employees...</p>
           </div>
         )}
 
@@ -395,54 +413,62 @@ const Employee = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredEmployees.map((employee) => (
-              <tr
-                key={employee.employeeId}
-                className="border-t border-gray-300"
-              >
-                <td className="p-3">{employee.employeeName}</td>
-                <td className="p-3">{employee.employeeId}</td>
-                <td className="p-3">{employee.position}</td>
-                <td className="p-3">
-                  <span
-                    className={`px-2 py-1 rounded-full ${
-                      employee.workingStatus === "Working"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-red-100 text-red-700"
-                    }`}
-                  >
-                    {employee.workingStatus}
-                  </span>
-                </td>
-                <td className="p-3">
-                  {employee.vehicleId
-                    ? employee.vehicleId.split(",").map((v, i) => (
-                        <span
-                          key={i}
-                          className="inline-block bg-gray-100 text-gray-700 rounded px-2 py-0.5 mr-1 mb-1 text-xs font-medium"
-                        >
-                          {v.trim()}
-                        </span>
-                      ))
-                    : ""}
-                </td>
-                <td className="p-3">{employee.rating}</td>
-                <td className="p-3 text-center flex gap-2 justify-center">
-                  <button
-                    onClick={() => handleEditEmployee(employee)}
-                    className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDeleteEmployee(employee.employeeId)}
-                    className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700"
-                  >
-                    Delete
-                  </button>
+            {!loading && filteredEmployees.length === 0 ? (
+              <tr>
+                <td colSpan="7" className="p-4 text-center text-gray-500">
+                  No employees found
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredEmployees.map((employee) => (
+                <tr
+                  key={employee.employeeId}
+                  className="border-t border-gray-300"
+                >
+                  <td className="p-3">{employee.employeeName}</td>
+                  <td className="p-3">{employee.employeeId}</td>
+                  <td className="p-3">{employee.position}</td>
+                  <td className="p-3">
+                    <span
+                      className={`px-2 py-1 rounded-full ${
+                        employee.workingStatus === "Working"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {employee.workingStatus}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    {employee.vehicleId
+                      ? employee.vehicleId.split(",").map((v, i) => (
+                          <span
+                            key={i}
+                            className="inline-block bg-gray-100 text-gray-700 rounded px-2 py-0.5 mr-1 mb-1 text-xs font-medium"
+                          >
+                            {v.trim()}
+                          </span>
+                        ))
+                      : ""}
+                  </td>
+                  <td className="p-3">{employee.rating}</td>
+                  <td className="p-3 text-center flex gap-2 justify-center">
+                    <button
+                      onClick={() => handleEditEmployee(employee)}
+                      className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteEmployee(employee.employeeId)}
+                      className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

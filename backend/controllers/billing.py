@@ -129,14 +129,16 @@ def generate_bill(job_id, tax_rate=None):
 
 
 def mark_as_paid(bill_id):
-    """Mark a bill as paid."""
+    """Mark a bill as paid using raw SQL."""
     query = f"""
         UPDATE {SCHEMA}.billing
-        SET payment_status = 'Paid', payment_date = %s
+        SET payment_status = 'Paid', payment_date = CURRENT_TIMESTAMP
         WHERE bill_id = %s
         RETURNING *
     """
-    result = execute_returning(query, (datetime.now(), bill_id))
+    print(f"[DEBUG] Marking bill {bill_id} as paid")
+    result = execute_returning(query, (bill_id,))
+    print(f"[DEBUG] mark_as_paid result: {result}")
     return dict(result) if result else None
 
 

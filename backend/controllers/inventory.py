@@ -3,15 +3,30 @@ Inventory controller - Raw SQL operations for inventory management.
 """
 from db.connection import get_db_cursor, execute_returning
 from datetime import datetime
+from decimal import Decimal
 
 SCHEMA = 'vehicle_service'
+
+
+def _serialize_item(row):
+    """Convert inventory row to JSON-serializable dict."""
+    if row is None:
+        return None
+    item = dict(row) if not isinstance(row, dict) else row
+    # Convert Decimal to float for JSON serialization
+    if 'unit_price' in item and isinstance(item['unit_price'], Decimal):
+        item['unit_price'] = float(item['unit_price'])
+    # Convert datetime to ISO string
+    if 'last_updated' in item and isinstance(item['last_updated'], datetime):
+        item['last_updated'] = item['last_updated'].isoformat()
+    return item
 
 
 def get_all_items():
     """Get all inventory items."""
     with get_db_cursor() as cur:
         cur.execute(f"SELECT * FROM {SCHEMA}.inventory ORDER BY part_name")
-        return [dict(row) for row in cur.fetchall()]
+        return [_serialize_item(row) for row in cur.fetchall()]
 
 
 def get_item_by_id(part_id):
@@ -19,7 +34,7 @@ def get_item_by_id(part_id):
     with get_db_cursor() as cur:
         cur.execute(f"SELECT * FROM {SCHEMA}.inventory WHERE part_id = %s", (part_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        return _serialize_item(row) if row else None
 
 
 def get_low_stock_items():
@@ -30,21 +45,21 @@ def get_low_stock_items():
             WHERE quantity_in_stock <= reorder_level
             ORDER BY (quantity_in_stock - reorder_level) ASC
         """)
-        return [dict(row) for row in cur.fetchall()]
+        return [_serialize_item(row) for row in cur.fetchall()]
 
 
-def add_item(part_name, part_code, unit_price, reorder_level, brand=None, quantity_in_stock=0, description=None):
+def add_item(part_name, part_code, unit_price, reorder_level, brand=None, quantity_in_stock=0, quantity_label='pcs', description=None, image_url=None):
     """Add a new inventory item."""
     query = f"""
         INSERT INTO {SCHEMA}.inventory 
-            (part_name, part_code, brand, unit_price, quantity_in_stock, reorder_level, description, last_updated)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (part_name, part_code, brand, unit_price, quantity_in_stock, quantity_label, reorder_level, description, image_url, last_updated)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING *
     """
     result = execute_returning(query, (
-        part_name, part_code, brand, unit_price, quantity_in_stock, reorder_level, description, datetime.now()
+        part_name, part_code, brand, unit_price, quantity_in_stock, quantity_label, reorder_level, description, image_url, datetime.now()
     ))
-    return dict(result) if result else None
+    return _serialize_item(result) if result else None
 
 
 def update_stock(part_id, quantity_change):
@@ -59,7 +74,7 @@ def update_stock(part_id, quantity_change):
         RETURNING *
     """
     result = execute_returning(query, (quantity_change, datetime.now(), part_id))
-    return dict(result) if result else None
+    return _serialize_item(result) if result else None
 
 
 def set_stock(part_id, new_quantity):
@@ -71,11 +86,11 @@ def set_stock(part_id, new_quantity):
         RETURNING *
     """
     result = execute_returning(query, (new_quantity, datetime.now(), part_id))
-    return dict(result) if result else None
+    return _serialize_item(result) if result else None
 
 
 def update_item(part_id, part_name=None, part_code=None, brand=None, unit_price=None, 
-                quantity_in_stock=None, reorder_level=None, description=None):
+                quantity_in_stock=None, quantity_label=None, reorder_level=None, description=None, image_url=None):
     """Update an inventory item."""
     updates = []
     params = []
@@ -95,12 +110,18 @@ def update_item(part_id, part_name=None, part_code=None, brand=None, unit_price=
     if quantity_in_stock is not None:
         updates.append("quantity_in_stock = %s")
         params.append(quantity_in_stock)
+    if quantity_label is not None:
+        updates.append("quantity_label = %s")
+        params.append(quantity_label)
     if reorder_level is not None:
         updates.append("reorder_level = %s")
         params.append(reorder_level)
     if description is not None:
         updates.append("description = %s")
         params.append(description)
+    if image_url is not None:
+        updates.append("image_url = %s")
+        params.append(image_url)
     
     if not updates:
         return get_item_by_id(part_id)
@@ -117,7 +138,7 @@ def update_item(part_id, part_name=None, part_code=None, brand=None, unit_price=
     """
     
     result = execute_returning(query, tuple(params))
-    return dict(result) if result else None
+    return _serialize_item(result) if result else None
 
 
 def part_exists(part_id):
@@ -135,3 +156,10 @@ def check_stock_available(part_id, quantity_needed):
         if row:
             return row['quantity_in_stock'] >= quantity_needed
         return False
+    
+
+def delete_item(part_id):
+    """Delete an inventory item by ID."""
+    query = f"DELETE FROM {SCHEMA}.inventory WHERE part_id = %s RETURNING *"
+    result = execute_returning(query, (part_id,))
+    return result is not None

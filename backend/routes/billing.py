@@ -121,11 +121,13 @@ def generate_bill(current_user):
 @token_required
 def mark_as_paid(current_user, bill_id):
     """Mark a bill as paid."""
+    print(f"[DEBUG] /api/billing/{bill_id}/pay called by user {current_user.get('id')}")
     try:
         if not bill_ctrl.bill_exists(bill_id):
             return jsonify({'error': 'Bill not found'}), 404
         
         bill = bill_ctrl.mark_as_paid(bill_id)
+        print(f"[DEBUG] Bill marked as paid, result: {bill}")
         
         return jsonify({
             'message': 'Bill marked as paid',
@@ -133,6 +135,7 @@ def mark_as_paid(current_user, bill_id):
         }), 200
         
     except Exception as e:
+        print(f"[DEBUG] Error marking bill as paid: {str(e)}")
         return jsonify({'error': f'Failed to update bill: {str(e)}'}), 500
 
 
